@@ -1,5 +1,5 @@
-name: 'Python Auto Publish'
-description: 'Automatically publish Python packages to PyPI when a new version is pushed'
+name: 'Python Package New Version'
+description: 'Automatically checks pyproject.toml and Pypi.org to know if this package needs a new version'
 runs:
   using: 'composite'
   steps:
