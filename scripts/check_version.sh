@@ -18,7 +18,6 @@ if [ -z "$VERSION" ]; then
     error_exit "Unable to extract version from $PYPROJECT_FILE"
 fi
 echo "Version is $VERSION"
-echo "VERSION=$VERSION" >> $GITHUB_ENV
 
 # Step 2: Get package name from pyproject.toml
 PACKAGE_NAME=$(awk -F'=' '/^name/ {gsub(/[" ]/, "", $2); print $2}' "$PYPROJECT_FILE")
@@ -26,7 +25,6 @@ if [ -z "$PACKAGE_NAME" ]; then
     error_exit "Unable to extract package name from $PYPROJECT_FILE"
 fi
 echo "PACKAGE_NAME is $PACKAGE_NAME"
-echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
 
 # Step 3: Get latest release version from PyPI
 PUBLISHED_VERSIONS=$(curl -s "https://pypi.org/pypi/$PACKAGE_NAME/json" | jq -r '.releases | keys | .[]')
@@ -35,7 +33,6 @@ if [ -z "$PUBLISHED_VERSIONS" ]; then
     error_exit "Unable to retrieve published version from PyPI for $PACKAGE_NAME"
 fi
 echo "Published PyPI versions are $PUBLISHED_VERSIONS"
-echo "PUBLISHED_VERSIONS=$PUBLISHED_VERSIONS" >> $GITHUB_ENV
 
 # Step 4: Check if current version is in the list of published versions
 PUBLISHING="true"
