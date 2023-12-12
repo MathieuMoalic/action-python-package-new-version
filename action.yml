@@ -1,0 +1,10 @@
+name: 'Python Auto Publish'
+description: 'Automatically publish Python packages to PyPI when a new version is pushed'
+runs:
+  using: 'composite'
+  steps:
+    - name: Run Check Version Script
+      shell: bash
+      run: |
+          chmod +x ${{ github.workspace }}/scripts/check_version.sh
+          ${{ github.workspace }}/scripts/check_version.sh
