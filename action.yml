@@ -8,3 +8,6 @@ runs:
       run: |
           chmod +x ${{ github.workspace }}/scripts/check_version.sh
           ${{ github.workspace }}/scripts/check_version.sh
+branding:
+  color: "yellow"
+  icon: "package"
