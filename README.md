@@ -16,16 +16,40 @@ Below is a sample workflow that shows how to use action-python-package-new-versi
 
 ```yaml
 name: Example Workflow
-on: [push]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
+    environment:
+      name: pypi
+    permissions:
+      id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
 
-    - name: action-python-package-new-version
-      uses: MathieuMoalic/action-python-package-new-version@v1
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Python Package New Version
+        uses: MathieuMoalic/action-python-package-new-version@v1.0.1
+                        
+      - name: Set up Python
+        if: env.PUBLISHING == 'true'
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Build package
+        if: env.PUBLISHING == 'true'
+        run: python -m pip install --upgrade pip && pip install build && python -m build
+
+      - name: Publish package distributions to PyPI
+        if: env.PUBLISHING == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
 ```
 
 ## Outputs
