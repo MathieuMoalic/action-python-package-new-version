@@ -4,6 +4,8 @@ description: 'Automatically checks pyproject.toml and Pypi.org to know if this p
 runs:
   using: 'docker'
   image: 'Dockerfile'
+  args:
+      - ${{ inputs.path }}
 
 inputs:
   path:
