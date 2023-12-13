@@ -1,8 +1,11 @@
 name: 'Python Package New Version'
 description: 'Automatically checks pyproject.toml and Pypi.org to know if this package needs a new version'
+
 runs:
   using: 'docker'
-  main: scripts/check_version.sh
+  image: 'Dockerfile'
+  args:
+    - ${{ github.workspace }}
 
 branding:
   color: "yellow"
