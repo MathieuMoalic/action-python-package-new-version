@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+        with:
+          repository: MathieuMoalic/pyzfn
 
       - name: Python Package New Version
         uses: ./
