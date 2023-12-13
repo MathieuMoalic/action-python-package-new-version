@@ -5,6 +5,12 @@ runs:
   using: 'docker'
   image: 'Dockerfile'
 
+inputs:
+  path:
+    description: 'Path to pyproject.toml'
+    required: false
+    default: 'pyproject.toml'
+
 branding:
   color: "yellow"
   icon: "package"

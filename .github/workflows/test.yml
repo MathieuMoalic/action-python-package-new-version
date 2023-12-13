@@ -15,14 +15,17 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: MathieuMoalic/action-python-package-new-version
-          path: 'action-repo'  # Saves the repo in a folder named 'action-repo'
+          path: 'action-repo'
 
       # Checkout the repository you want to operate on
       - name: Checkout Python Package Repository
         uses: actions/checkout@v3
         with:
           repository: MathieuMoalic/pyzfn
+          path: 'test-repo'
 
       # Use the local action
       - name: Python Package New Version
         uses: ./action-repo
+        with:
+          path: 'test-repo/pyproject.toml'

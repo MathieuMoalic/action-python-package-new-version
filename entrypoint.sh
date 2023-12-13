@@ -7,7 +7,7 @@ error_exit() {
 }
 
 # Check if pyproject.toml exists
-PYPROJECT_FILE="pyproject.toml"
+PYPROJECT_FILE=$1
 if [ ! -f "$PYPROJECT_FILE" ]; then
     error_exit "$PYPROJECT_FILE does not exist."
 fi
