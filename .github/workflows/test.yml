@@ -22,7 +22,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: MathieuMoalic/pyzfn
-          path: 'python-package'  # Saves the repo in a folder named 'python-package'
 
       # Use the local action
       - name: Python Package New Version
