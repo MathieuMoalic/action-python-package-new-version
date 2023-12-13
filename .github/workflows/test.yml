@@ -10,14 +10,20 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      # Checkout the repository containing the action
+      - name: Checkout Action Repository
+        uses: actions/checkout@v3
+        with:
+          repository: MathieuMoalic/action-python-package-new-version
+          path: 'action-repo'  # Saves the repo in a folder named 'action-repo'
+
+      # Checkout the repository you want to operate on
+      - name: Checkout Python Package Repository
         uses: actions/checkout@v3
         with:
           repository: MathieuMoalic/pyzfn
+          path: 'python-package'  # Saves the repo in a folder named 'python-package'
 
+      # Use the local action
       - name: Python Package New Version
-        uses: ./
-                        
-      - name: Compare versions
-        run: |
-          echo env.PUBLISHING
+        uses: ./action-repo
