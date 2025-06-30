@@ -1,58 +1,57 @@
 # action-python-package-new-version
 
-## Description
-Parses the pyproject.toml file to retrieve the current version and package name of your project.
+Automatically detects whether the version declared in **pyproject.toml** has
+already been published on one **or many** Python package indexes.
 
-Fetch Published Version from PyPI: Queries PyPI to find the latest published version of your package.
+## 🔍 What it does
 
-Compare Versions and Determine Publishing Need: Compares the local version from pyproject.toml with the versions available on PyPI. If the local version is not found, it sets an environment variable `NEW_VERSION=true` indicating that a new version of the package needs to be published.
+1. **Parse `pyproject.toml`** – extracts `name` and `version`.  
+2. **Query each index** (`pypi.org`, `test.pypi.org`, a private mirror, …).  
+3. **Export booleans**  
+   * `PUBLISHING_<index>` – `true` if that registry **does not** have the
+     version.  
+   * Aggregate `PUBLISHING` – `true` *only* if **none** of the indexes have it.  
+4. Also exports `PACKAGE_NAME` and `PACKAGE_VERSION`.
 
-Robust Error Handling: The script includes error handling for each critical step, ensuring clarity and reliability in the publishing process.
+These variables let the rest of your workflow decide **where** to upload.
 
-This action is particularly useful for automating the workflow of Python package development, where consistent and error-free publishing to PyPI is critical.
+## 📦 Inputs
 
-## Usage
-Below is a sample workflow that shows how to use action-python-package-new-version:
+| Name    | Default              | Description |
+|---------|----------------------|-------------|
+| `path`  | `pyproject.toml`     | Path to the project’s `pyproject.toml`. |
+| `indexes` | *(empty)* → `pypi.org test.pypi.org` | Space-separated host-names to check. |
+
+## 🛠 Outputs
+
+| Output                      | Example | Meaning |
+|-----------------------------|---------|---------|
+| `publishing`                | `true`  | Same as `$PUBLISHING`. |
+| `package_version`           | `1.4.2` | Version from `pyproject.toml`. |
+| `package_name`              | `my_pkg`| Name from `pyproject.toml`. |
+| `publishing_pypi_org`       | `false` | Version already on PyPI. |
+| `publishing_test_pypi_org`  | `true`  | Version **not** on Test PyPI. |
+
+*(Index-specific outputs are created dynamically; replace dots with underscores.)*
+
+## 🚀 Usage
+
+### Check **PyPI only** (back-compatible behaviour)
 
 ```yaml
-name: Example Workflow
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+steps:
+  - uses: actions/checkout@v4
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-    permissions:
-      id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
+  - name: Version check
+    uses: MathieuMoalic/action-python-package-new-version@v1.1.0
+    with:
+      path: pyproject.toml            # optional, shown for clarity
+      indexes: "pypi.org"             # ← only look at the real PyPI
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+  - name: Build
+    if: env.PUBLISHING_pypi_org == 'true'
+    run: uv build
 
-      - name: Python Package New Version
-        uses: MathieuMoalic/action-python-package-new-version@v1.0.1
-                        
-      - name: Set up Python
-        if: env.PUBLISHING == 'true'
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Build package
-        if: env.PUBLISHING == 'true'
-        run: python -m pip install --upgrade pip && pip install build && python -m build
-
-      - name: Publish package distributions to PyPI
-        if: env.PUBLISHING == 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
-```
-
-## Outputs
-- `NEW_VERSION`: set to `true` if the version in `pyproject.toml` is not published on pypi.org.
-
-Project Link: [https://github.com/MathieuMoalic/action-python-package-new-version](https://github.com/MathieuMoalic/action-python-package-new-version)
+  - name: Publish to PyPI
+    if: env.PUBLISHING_pypi_org == 'true'
+    uses: pypa/gh-action-pypi-publish@release/v1

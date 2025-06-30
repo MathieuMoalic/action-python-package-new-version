@@ -1,47 +1,79 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# check-package-version.sh
+#
+# Usage examples
+#   ./check-package-version.sh                 # looks at pyproject.toml, checks pypi + test.pypi
+#   ./check-package-version.sh src/pyproject.toml pypi.org custom.repo.local
+#
+# Requires: curl, jq, awk, bash 4+
 
-# Function to handle errors
+set -euo pipefail
+
+########## helper ##########
 error_exit() {
     echo "Error: $1" >&2
     exit 1
 }
 
-# Check if pyproject.toml exists
-PYPROJECT_FILE=$1
+########## inputs ##########
+PYPROJECT_FILE="${1:-pyproject.toml}"
 
-if [ ! -f "$PYPROJECT_FILE" ]; then
-    error_exit "$PYPROJECT_FILE does not exist."
-fi
+# Default indexes to probe.  Feel free to add more.
+DEFAULT_INDEXES=(pypi.org test.pypi.org)
 
-# Step 1: Get version from pyproject.toml
-VERSION=$(awk -F'=' '/^version/ {gsub(/[" ]/, "", $2); print $2}' "$PYPROJECT_FILE")
-if [ -z "$VERSION" ]; then
-    error_exit "Unable to extract version from $PYPROJECT_FILE"
-fi
-echo "Version is $VERSION"
+# If the caller listed extra indexes on the command line use those, otherwise defaults.
+shift || true            # shift once so $@ now holds any extra args
+INDEXES=("${@:-${DEFAULT_INDEXES[@]}}")
 
-# Step 2: Get package name from pyproject.toml
-PACKAGE_NAME=$(awk -F'=' '/^name/ {gsub(/[" ]/, "", $2); print $2}' "$PYPROJECT_FILE")
-if [ -z "$PACKAGE_NAME" ]; then
-    error_exit "Unable to extract package name from $PYPROJECT_FILE"
-fi
-echo "PACKAGE_NAME is $PACKAGE_NAME"
+########## validate file ##########
+[[ -f "$PYPROJECT_FILE" ]] || error_exit "$PYPROJECT_FILE does not exist."
 
-# Step 3: Get latest release version from PyPI
-PUBLISHED_VERSIONS=$(curl -s "https://pypi.org/pypi/$PACKAGE_NAME/json" | jq -r '.releases | keys | .[]')
+########## extract name & version ##########
+VERSION=$(awk -F'=' '/^[[:space:]]*version[[:space:]]*=/ \
+         {gsub(/["'\'']|[[:space:]]/, "", $2); print $2}' "$PYPROJECT_FILE")
+[[ -n "$VERSION" ]] || error_exit "Unable to extract version from $PYPROJECT_FILE"
 
-if [ -z "$PUBLISHED_VERSIONS" ]; then
-    error_exit "Unable to retrieve published version from PyPI for $PACKAGE_NAME"
-fi
-echo "Published PyPI versions are $PUBLISHED_VERSIONS"
+PACKAGE_NAME=$(awk -F'=' '/^[[:space:]]*name[[:space:]]*=/ \
+              {gsub(/["'\'']|[[:space:]]/, "", $2); print $2}' "$PYPROJECT_FILE")
+[[ -n "$PACKAGE_NAME" ]] || error_exit "Unable to extract package name from $PYPROJECT_FILE"
 
-# Step 4: Check if current version is in the list of published versions
-PUBLISHING="true"
-for ver in $PUBLISHED_VERSIONS; do
-    if [ "$ver" == "$VERSION" ]; then
-        PUBLISHING="false"
-        break
+echo "Package: $PACKAGE_NAME   Version: $VERSION"
+echo "Indexes to check: ${INDEXES[*]}"
+
+########## main loop ##########
+NEED_PUBLISH_ALL=true   # stays true only if every individual index says "needs publish"
+
+for INDEX in "${INDEXES[@]}"; do
+    # Replace dots with underscores to build an env-safe key, e.g. pypi_org
+    INDEX_KEY="${INDEX//./_}"
+
+    # Query the JSON.  Handle 404 (package never uploaded) and network errors gracefully.
+    if JSON=$(curl -sSfL "https://${INDEX}/pypi/${PACKAGE_NAME}/json" 2>/dev/null); then
+        PUBLISHED_VERSIONS=$(jq -r '.releases | keys | .[]' <<<"$JSON" | tr '\n' ' ')
+    else
+        echo "⚠️  Could not retrieve metadata from ${INDEX}; assuming version not present there."
+        PUBLISHED_VERSIONS=""
     fi
+
+    echo "Versions on ${INDEX}: ${PUBLISHED_VERSIONS:-<none>}"
+
+    PUBLISHING_FOR_INDEX=true
+    for ver in $PUBLISHED_VERSIONS; do
+        if [[ "$ver" == "$VERSION" ]]; then
+            PUBLISHING_FOR_INDEX=false
+            NEED_PUBLISH_ALL=false   # because at least one index already has the version
+            break
+        fi
+    done
+
+    echo "PUBLISHING_${INDEX_KEY}=${PUBLISHING_FOR_INDEX}"
+    echo "PUBLISHING_${INDEX_KEY}=${PUBLISHING_FOR_INDEX}" >> "${GITHUB_ENV:-/dev/null}"
 done
-echo "PUBLISHING is $PUBLISHING"
-echo "PUBLISHING=$PUBLISHING" >> $GITHUB_ENV
+
+########## aggregate flag ##########
+echo "PUBLISHING=${NEED_PUBLISH_ALL}"
+echo "PUBLISHING=${NEED_PUBLISH_ALL}" >> "${GITHUB_ENV:-/dev/null}"
+
+########## always useful info ##########
+echo "PACKAGE_NAME=$PACKAGE_NAME"    >> "${GITHUB_ENV:-/dev/null}"
+echo "PACKAGE_VERSION=$VERSION"      >> "${GITHUB_ENV:-/dev/null}"

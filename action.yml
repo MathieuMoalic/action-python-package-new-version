@@ -1,18 +1,42 @@
-name: 'Python Package New Version'
-description: 'Automatically checks pyproject.toml and Pypi.org to know if this package needs a new version'
+name: 'Python Package Version Check'
+description: >
+  Parses pyproject.toml, queries one or more Python package indexes
+  (PyPI, Test PyPI, a private mirror, …) and sets environment variables that
+  tell the workflow whether the local version needs publishing.
 
 runs:
   using: 'docker'
   image: 'Dockerfile'
   args:
-      - ${{ inputs.path }}
+    - ${{ inputs.path }}
+    - ${{ inputs.indexes }}
 
 inputs:
   path:
-    description: 'Path to pyproject.toml'
+    description: >
+      Path to the pyproject.toml to inspect.
     required: false
-    default: 'pyproject.toml'
+    default: pyproject.toml
+
+  indexes:
+    description: >
+      Space-separated list of package-index host-names to query.
+      The first value is usually "pypi.org".
+      Example: "pypi.org test.pypi.org mirror.example.com"
+      If omitted, the Action checks both pypi.org and test.pypi.org.
+    required: false
+    default: ""   # empty means: use script’s built-in default list
+
+outputs:
+  publishing:
+    description: >
+      true ↔ the version is missing from *all* queried indexes
+      (alias for PUBLISHING env var set by the script)
+  package_version:
+    description: Version string extracted from pyproject.toml
+  package_name:
+    description: Package name extracted from pyproject.toml
 
 branding:
-  color: "yellow"
-  icon: "package"
+  icon: package
+  color: yellow
