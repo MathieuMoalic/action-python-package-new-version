@@ -1,40 +1,53 @@
-name: 'Python Package Version Check'
+name: Python Package Version Check
 description: >
-  Parses pyproject.toml, checks package indexes, and sets env vars to signal if a local version needs publishing.
-
-
-runs:
-  using: 'docker'
-  image: 'Dockerfile'
-  args:
-    - ${{ inputs.path }}
-    - ${{ inputs.indexes }}
+    Parses pyproject.toml, checks package indexes, and sets env vars to signal if a local version needs publishing.
 
 inputs:
   path:
-    description: >
-      Path to the pyproject.toml to inspect.
+    description: Path to the pyproject.toml to inspect.
     required: false
     default: pyproject.toml
 
   indexes:
-    description: >
-      Space-separated list of package-index host-names to query.
-      The first value is usually "pypi.org".
-      Example: "pypi.org test.pypi.org mirror.example.com"
-      If omitted, the Action checks both pypi.org and test.pypi.org.
+    description: |
+      (Optional) Space- or newline-separated list of index host names.
+      Examples:
+        "pypi.org"
+        "pypi.org test.pypi.org"
+        # YAML sequence (no quotes):
+        # - pypi.org
+        # - test.pypi.org
+      Leave empty to use the script's built-in defaults.
     required: false
-    default: ""   # empty means: use script’s built-in default list
+    default: "pypi.org"
 
 outputs:
   publishing:
     description: >
-      true ↔ the version is missing from *all* queried indexes
-      (alias for PUBLISHING env var set by the script)
+      "true" if the version is missing from *all* queried indexes
+      (mirrors the PUBLISHING env var emitted by the script).
   package_version:
-    description: Version string extracted from pyproject.toml
+    description: Version string extracted from pyproject.toml.
   package_name:
-    description: Package name extracted from pyproject.toml
+    description: Package name extracted from pyproject.toml.
+
+runs:
+  using: composite
+  steps:
+    - name: Check package version
+      id: run-check
+      shell: bash
+      run: |
+        python "${{ github.action_path }}/entrypoint.py" \
+               "${{ inputs.path }}" \
+               ${{ inputs.indexes }}
+
+    - name: Export outputs
+      shell: bash
+      run: |
+        echo "publishing=${PUBLISHING}"            >>"$GITHUB_OUTPUT"
+        echo "package_version=${PACKAGE_VERSION}"  >>"$GITHUB_OUTPUT"
+        echo "package_name=${PACKAGE_NAME}"        >>"$GITHUB_OUTPUT"
 
 branding:
   icon: package
