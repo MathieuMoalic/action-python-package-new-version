@@ -11,25 +11,9 @@ inputs:
   indexes:
     description: |
       (Optional) Space- or newline-separated list of index host names.
-      Examples:
-        "pypi.org"
-        "pypi.org test.pypi.org"
-        # YAML sequence (no quotes):
-        # - pypi.org
-        # - test.pypi.org
       Leave empty to use the script's built-in defaults.
     required: false
-    default: "pypi.org"
-
-outputs:
-  publishing:
-    description: >
-      "true" if the version is missing from *all* queried indexes
-      (mirrors the PUBLISHING env var emitted by the script).
-  package_version:
-    description: Version string extracted from pyproject.toml.
-  package_name:
-    description: Package name extracted from pyproject.toml.
+    default: ""
 
 runs:
   using: composite
@@ -43,11 +27,24 @@ runs:
                ${{ inputs.indexes }}
 
     - name: Export outputs
+      id: export
       shell: bash
       run: |
-        echo "publishing=${PUBLISHING}"            >>"$GITHUB_OUTPUT"
-        echo "package_version=${PACKAGE_VERSION}"  >>"$GITHUB_OUTPUT"
-        echo "package_name=${PACKAGE_NAME}"        >>"$GITHUB_OUTPUT"
+        echo "publishing=$PUBLISHING"            >>"$GITHUB_OUTPUT"
+        echo "package_version=$PACKAGE_VERSION"  >>"$GITHUB_OUTPUT"
+        echo "package_name=$PACKAGE_NAME"        >>"$GITHUB_OUTPUT"
+
+outputs:
+  publishing:
+    description: >
+      "true" if the version is missing from *all* queried indexes
+    value: ${{ steps.export.outputs.publishing }}
+  package_version:
+    description: Version string extracted from pyproject.toml.
+    value: ${{ steps.export.outputs.package_version }}
+  package_name:
+    description: Package name extracted from pyproject.toml.
+    value: ${{ steps.export.outputs.package_name }}
 
 branding:
   icon: package
