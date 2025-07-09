@@ -1,8 +1,7 @@
 name: 'Python Package Version Check'
 description: >
-  Parses pyproject.toml, queries one or more Python package indexes
-  (PyPI, Test PyPI, a private mirror, …) and sets environment variables that
-  tell the workflow whether the local version needs publishing.
+  Parses pyproject.toml, checks package indexes, and sets env vars to signal if a local version needs publishing.
+
 
 runs:
   using: 'docker'
