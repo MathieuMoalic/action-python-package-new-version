@@ -3,19 +3,60 @@ on:
   pull_request:
   push:
     branches: [main]
+
 env:
-  PYTHONWARNINGS: "ignore"     # silence urllib warnings
+  PYTHONWARNINGS: "ignore"          # keep logs clean
 
 jobs:
-  tests:
+  integration:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+    strategy:
+      fail-fast: false              # run all cases even if one fails
+      matrix:
+        include:
+          # ---- test case 1 ----------------------------------------------
+          - case: already_published
+            path: tests/fixtures/already_published/pyproject.toml
+            expected_publishing:  "false"
+            expected_pkg_version: "2.31.0"
+          # ---- test case 2 ----------------------------------------------
+          - case: needs_publishing
+            path: tests/fixtures/needs_publishing/pyproject.toml
+            expected_publishing:  "true"
+            expected_pkg_version: "9.9.9"
 
-      - name: Self-integration test
-        id: action-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run version-check (${{ matrix.case }})
+        id: check
         uses: ./
         with:
-          path: tests/pyproject.toml
-          indexes: "pypi.org"
+          path:    ${{ matrix.path }}
+          indexes: "pypi.org"               # only real PyPI, deterministic
+
+      - name: Assertions
+        shell: bash
+        run: |
+          set -e
+
+          echo "🔎  Expected publishing = '${{ matrix.expected_publishing }}'"
+          echo "🔎  Action    publishing = '${{ steps.check.outputs.publishing }}'"
+
+          if [[ "${{ steps.check.outputs.publishing }}" != "${{ matrix.expected_publishing }}" ]]; then
+            echo "::error::❌  publishing output mismatch"
+            exit 1
+          fi
+
+          echo "🔎  Expected PACKAGE_VERSION = '${{ matrix.expected_pkg_version }}'"
+          echo "🔎  Env      PACKAGE_VERSION = '${{ env.PACKAGE_VERSION }}'"
+
+          if [[ "${{ env.PACKAGE_VERSION }}" != "${{ matrix.expected_pkg_version }}" ]]; then
+            echo "::error::❌  PACKAGE_VERSION env-var mismatch"
+            exit 1
+          fi
+
+          # (optional) check per-index env var created by the script
+          echo "🔎  PUBLISHING_pypi_org = '${{ env.PUBLISHING_pypi_org }}'"
+
+          echo "✅  All assertions passed for ${{ matrix.case }}"
