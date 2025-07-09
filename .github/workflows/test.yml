@@ -10,11 +10,8 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Action Repository
-        uses: actions/checkout@v3
-        with:
-          repository: MathieuMoalic/action-python-package-new-version
-          path: 'action-repo'
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       - name: Self-integration test
         id: action-test
