@@ -1,31 +1,24 @@
-name: Test, build and publish
-
+name: test
 on:
-  push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+  push:
+    branches: [main]
+env:
+  PYTHONWARNINGS: "ignore"     # silence urllib warnings
 
 jobs:
-  deploy:
+  tests:
     runs-on: ubuntu-latest
     steps:
-      # Checkout the repository containing the action
       - name: Checkout Action Repository
         uses: actions/checkout@v3
         with:
           repository: MathieuMoalic/action-python-package-new-version
           path: 'action-repo'
 
-      # Checkout the repository you want to operate on
-      - name: Checkout Python Package Repository
-        uses: actions/checkout@v3
+      - name: Self-integration test
+        id: action-test
+        uses: ./
         with:
-          repository: MathieuMoalic/pyzfn
-          path: 'test-repo'
-
-      # Use the local action
-      - name: Python Package New Version
-        uses: ./action-repo
-        with:
-          path: 'test-repo/pyproject.toml'
+          path: tests/pyproject.toml
+          indexes: "pypi.org"
