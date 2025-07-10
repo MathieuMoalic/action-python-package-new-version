@@ -41,12 +41,9 @@ jobs:
           # Optional – location of pyproject.toml if not at repo root
           path: src/my_project/pyproject.toml
           
-          # Optional – space- or newline-separated list of index host names
+          # Optional – space-separated list of index host names
           # Example below checks PyPI, TestPyPI, and a private index
-          indexes: |
-            pypi.org
-            test.pypi.org
-            packages.my-company.local
+          indexes: pypi.org test.pypi.org index.private.org
 
       - name: Publish to indexes when needed
         if: steps.version-check.outputs.publishing == 'true'
