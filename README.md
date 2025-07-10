@@ -36,7 +36,7 @@ jobs:
 
       - name: Check whether this version is already published
         id: version-check
-        uses: your-org/python-package-version-check@v1
+        uses: MathieuMoalic/action-python-package-new-version@v2.0.1
         with:
           # Optional – location of pyproject.toml if not at repo root
           path: src/my_project/pyproject.toml
