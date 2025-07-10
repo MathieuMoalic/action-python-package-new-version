@@ -10,10 +10,9 @@ inputs:
 
   indexes:
     description: |
-      (Optional) Space- or newline-separated list of index host names.
-      Leave empty to use the script's built-in defaults.
+      (Optional) Space-separated list of index host names.
     required: false
-    default: ""
+    default: "pypi.org"
 
 runs:
   using: composite
@@ -25,26 +24,6 @@ runs:
         python "${{ github.action_path }}/entrypoint.py" \
                "${{ inputs.path }}" \
                ${{ inputs.indexes }}
-
-    - name: Export outputs
-      id: export
-      shell: bash
-      run: |
-        echo "publishing=$PUBLISHING"            >>"$GITHUB_OUTPUT"
-        echo "package_version=$PACKAGE_VERSION"  >>"$GITHUB_OUTPUT"
-        echo "package_name=$PACKAGE_NAME"        >>"$GITHUB_OUTPUT"
-
-outputs:
-  publishing:
-    description: >
-      "true" if the version is missing from *all* queried indexes
-    value: ${{ steps.export.outputs.publishing }}
-  package_version:
-    description: Version string extracted from pyproject.toml.
-    value: ${{ steps.export.outputs.package_version }}
-  package_name:
-    description: Package name extracted from pyproject.toml.
-    value: ${{ steps.export.outputs.package_name }}
 
 branding:
   icon: package

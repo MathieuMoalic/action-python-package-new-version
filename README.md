@@ -1,7 +1,6 @@
 # Python Package Version Check – GitHub Action
 
 Quickly find out whether the version declared in your `pyproject.toml` is **already published** to one or more Python package indexes (PyPI, Test PyPI, a private index, …).
-The action sets convenient outputs you can use to decide whether you need to run a `build` + `twine upload` step.
 
 ---
 
@@ -13,7 +12,6 @@ The action sets convenient outputs you can use to decide whether you need to run
 4. Exposes result flags via:
 
    * **environment variables** (for debugging inside the step)
-   * **composite-action outputs** `publishing`, `package_version`, `package_name`
 
 If the version is missing from *all* available indexes, `publishing` is set to `true`.
 
@@ -35,7 +33,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Check whether this version is already published
-        id: version-check
         uses: MathieuMoalic/action-python-package-new-version@v2.0.1
         with:
           # Optional – location of pyproject.toml if not at repo root
@@ -45,11 +42,18 @@ jobs:
           # Example below checks PyPI, TestPyPI, and a private index
           indexes: pypi.org test.pypi.org index.private.org
 
-      - name: Publish to indexes when needed
-        if: steps.version-check.outputs.publishing == 'true'
-        run: |
-          python -m build
-          twine upload --repository pypi dist/*
+      # This is how you can access it through env, for individual indexes
+      - name: Install uv
+        if: env.PUBLISHING_pypi_org == 'true'
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build package
+        if: env.PUBLISHING_pypi_org == 'true'
+        run: uv build
+
+      - name: Publish package distributions to PyPI
+        if: env.PUBLISHING_pypi_org == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
 ```
 
 ---
@@ -59,17 +63,9 @@ jobs:
 | Input     | Required | Default          | Description                                                                                                                     |
 | --------- | -------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `path`    | no       | `pyproject.toml` | Path to the file that contains `project.name` & `project.version`.                                                              |
-| `indexes` | no       | *(built-in)*     | Space- or newline-separated list of index **host names** (e.g. `pypi.org`). Leave blank to query the default list (`pypi.org`). |
+| `indexes` | no       | `pypi.org`       | Space-separated list of index **host names** (e.g. `pypi.org test.pypi.org index.private.org`). |
 
 ---
-
-## ⬅️ Outputs
-
-| Output            | Type   | Meaning                                                         |
-| ----------------- | ------ | --------------------------------------------------------------- |
-| `publishing`      | bool   | `true` ⇒ the version is missing from **all** reachable indexes. |
-| `package_version` | string | The version found in `pyproject.toml`.                          |
-| `package_name`    | string | The package name found in `pyproject.toml`.                     |
 
 ### Per-index environment variables
 
@@ -77,8 +73,6 @@ Within the same composite step you also have:
 
 * `PUBLISHING_<index>` – e.g. `PUBLISHING_pypi_org=true`
   (`index` dots replaced by underscores)
-
-These are **not** exported as formal action outputs, but you can consume them in subsequent shell commands inside the same composite Action if you need per-index logic.
 
 ---
 

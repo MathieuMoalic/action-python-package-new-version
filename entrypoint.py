@@ -2,7 +2,7 @@
 """Check whether the version in pyproject.toml is already on each package index.
 
 Usage examples
-    python check_package_version.py                  # default: pyproject.toml, pypi.org & test.pypi.org
+    python check_package_version.py                  # default: pyproject.toml  pypi.org
     python check_package_version.py src/pyproject.toml pypi.org custom.repo.local
 """
 
@@ -12,9 +12,8 @@ import argparse, json, os, sys, textwrap, urllib.error, urllib.request
 try:
     import tomllib            # Python ≥3.11
 except ModuleNotFoundError:    # GitHub still ships 3.12, but keep a fallback
-    import tomli as tomllib
+    import tomli as tomllib # type: ignore
 
-DEFAULT_INDEXES = ["pypi.org"]
 GITHUB_ENV = os.getenv("GITHUB_ENV")                 # path injected by Actions runtime
 
 def parse_args() -> tuple[str, list[str]]:
@@ -25,16 +24,28 @@ def parse_args() -> tuple[str, list[str]]:
     p.add_argument("pyproject", nargs="?", default="pyproject.toml")
     p.add_argument("indexes",   nargs="*", help="Host names, e.g. pypi.org test.pypi.org")
     ns = p.parse_args()
-    return ns.pyproject, (ns.indexes or DEFAULT_INDEXES)
+    return ns.pyproject, ns.indexes
 
-def read_name_version(pyproject_path: str) -> tuple[str,str]:
-    with open(pyproject_path, "rb") as f:
-        data = tomllib.load(f)
+
+def read_name_version(pyproject_path: str) -> tuple[str, str]:
     try:
-        proj = data["project"]
-        return proj["name"], proj["version"]
-    except KeyError as e:
-        sys.exit(f"Error: {pyproject_path} is missing `[project].{e.args[0]}`")
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+    except FileNotFoundError:
+        sys.exit(f"Error: File not found: {pyproject_path}")
+    except tomllib.TOMLDecodeError as e:
+        sys.exit(f"Error: Failed to parse TOML in {pyproject_path}: {e}")
+
+    if "project" not in data:
+        sys.exit(f"Error: {pyproject_path} is missing `[project]` section")
+
+    proj = data["project"]
+    missing_keys = [key for key in ("name", "version") if key not in proj]
+    if missing_keys:
+        keys_str = ", ".join(f"`[project].{k}`" for k in missing_keys)
+        sys.exit(f"Error: {pyproject_path} is missing {keys_str}")
+
+    return proj["name"], proj["version"]
 
 def query_index(index: str, package: str) -> list[str] | None:
     url = f"https://{index}/pypi/{package}/json"
@@ -62,36 +73,29 @@ def main():
     pyproject_path, indexes = parse_args()
     if not os.path.exists(pyproject_path):
         sys.exit(f"Error: {pyproject_path} does not exist.")
+    if not indexes:
+        sys.exit("Error: at least one index must be specified.")
 
-    name, version = read_name_version(pyproject_path)
-    print(f"Package: {name}   Version: {version}")
+    name, local_version = read_name_version(pyproject_path)
+    print(f"Package: {name}   Version: {local_version}")
     print(f"Indexes to check: {' '.join(indexes)}")
 
-    needs_publish_globally = True
     for idx in indexes:
         key = idx.replace(".", "_")          # env-safe
-        versions = query_index(idx, name)
+        index_versions = query_index(idx, name)
 
-        if versions is None:
+        if index_versions is None:
             # Treat as "needs publishing" but don't change global flag
             write_env_line(f"PUBLISHING_{key}", "true")
             continue
 
-        if len(versions) > 10:
-            latest = max(versions, key=lambda v: [int(x) if x.isdigit() else x for x in v.split('.')])
-            print(f"{idx}: {len(versions)} versions (latest {latest})")
+        if len(index_versions) > 10:
+            latest = max(index_versions, key=lambda v: [int(x) if x.isdigit() else x for x in v.split('.')])
+            print(f"{idx}: {len(index_versions)} versions (latest {latest})")
         else:
-            print(f"Versions on {idx}: {', '.join(versions) if versions else '<none>'}")
+            print(f"Versions on {idx}: {', '.join(index_versions) if index_versions else '<none>'}")
 
-        needs_publish = version not in versions
-        if not needs_publish:
-            needs_publish_globally = False
-
-        write_env_line(f"PUBLISHING_{key}", str(needs_publish).lower())
-
-    write_env_line("PACKAGE_NAME",    name)
-    write_env_line("PACKAGE_VERSION", version)
-    write_env_line("PUBLISHING",      str(needs_publish_globally).lower())
+        write_env_line(f"PUBLISHING_{key}", str(local_version not in index_versions).lower())
 
 if __name__ == "__main__":
     main()
