@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+Parses pyproject.toml, queries the package index,
+and sets outputs for GitHub Actions.
+"""
 
 import argparse
 import json
