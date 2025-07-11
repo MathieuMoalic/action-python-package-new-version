@@ -95,7 +95,8 @@ def main() -> None:
 
     set_github_output("package_name", name)
     set_github_output("package_version", local_version)
-    set_github_output("current_version_exists", local_version in versions)
+    set_github_output("current_version_exists", str(local_version in versions).lower())
+
 
 if __name__ == "__main__":
     main()
