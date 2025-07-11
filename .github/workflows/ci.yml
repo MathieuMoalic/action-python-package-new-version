@@ -77,4 +77,30 @@ jobs:
 
           echo "✅ Assertions passed for ${{ matrix.case }}"
 
+  release:
+    name: Draft GitHub Release
+    needs: tests
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Draft release notes
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+
+      - name: Move major tag (vX → this commit)
+        env:
+          TAG: ${{ github.ref_name }}   # e.g. v2.0.0
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          major=${TAG%%.*}              # → v2
+          git tag -f "$major" "$TAG"
+          git push -f origin "$major"
+
 
