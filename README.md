@@ -24,7 +24,7 @@ on:
     tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]
 
 jobs:
-  check-version:
+  version-check:
     runs-on: ubuntu-latest
     outputs:
       current_version_exists: ${{ steps.version_check.outputs.current_version_exists }}
@@ -33,35 +33,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check if this version already exists on PyPI
+      - name: Check package version on all index
         id: version_check
-        uses: your-org/python-package-version-check@v4
+        uses: MathieuMoalic/action-python-package-new-version@v3
         with:
-          # optional – default shown
-          path:  pyproject.toml
-          index: pypi.org
+          index: test.pypi.org
 
-  build-and-upload:
-    needs: check-version
-    if: ${{ needs.check-version.outputs.current_version_exists == 'false' }}
+  build:
     runs-on: ubuntu-latest
+    needs: version-check
+    if: ${{ needs.version-check.outputs.current_version_exists == 'false' }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python build toolchain
+      - name: Setup uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Build sdists/wheels
+      - name: Build distributions
         run: uv build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write
+    if: ${{ always() && !cancelled() && needs.build.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
 ```
-
-> **Tip**
-> Guarding your publish step with
-> `if: needs.check-version.outputs.current_version_exists == 'false'`
-> avoids accidental re-uploads and noisy failures.
 
 ---
 
@@ -81,44 +97,3 @@ jobs:
 | `current_version_exists` | `true` / `false` | **`true`** if the version is already published on the chosen index. |
 | `package_version`        | `1.4.2`          | The version string read from `pyproject.toml`.                      |
 | `package_name`           | `awesome-utils`  | The package name read from `pyproject.toml`.                        |
-
----
-
-## 🧩 How it works under the hood
-
-| Component           | Role                                                                                                                                                                                                |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`entrypoint.py`** | • Parses TOML with `tomllib`/`tomli` (Py≥3.11 / <3.11) <br>• GETs `https://<index>/pypi/<name>/json` <br>• Emits results via `echo "::set-output …"` so the composite step can surface them to you. |
-| **`action.yml`**    | • Defines the two configurable inputs <br>• Wraps the Python script inside a composite action <br>• Maps script output variables to the three official action outputs.                              |
-
----
-
-## 📚 Example patterns
-
-* **Skip CI** when the tag already exists:
-
-  ```yaml
-  if: ${{ steps.version_check.outputs.current_version_exists == 'true' }}
-  ```
-
-* **Add a “DEV” suffix** to nightly builds unless you’re on `main`:
-
-  ```yaml
-  - run: echo "VERSION=$(python scripts/bump.py)" >> $GITHUB_ENV
-    if: github.ref != 'refs/heads/main'
-  ```
-
----
-
-## 🏷️ Version compatibility
-
-* Requires **Python 3.8+** in the runner.
-* Works with **PEP 621-style** `pyproject.toml` (`[project]` table).
-
----
-
-## 📄 License
-
-This action is released under the **MIT License** – see [`LICENSE`](LICENSE) for details.
-
-Happy shipping! 🎉
