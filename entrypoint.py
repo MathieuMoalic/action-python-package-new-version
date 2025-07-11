@@ -98,6 +98,7 @@ def main() -> None:
     name, local_version = read_name_version(pyproject_path)
     print(f"Package: {name}   Version: {local_version}")
     print(f"Indexes to check: {' '.join(indexes)}")
+    write_env_line("PACKAGE_VERSION", local_version)
 
     for idx in indexes:
         key         = idx.replace(".", "_")                # env-safe
