@@ -23,37 +23,39 @@ name: Build & Publish
 on:
   push:
     branches: [ main ]
-    tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]   # optional: publish only on tags
+    tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]
 
 jobs:
-  build:
+  check-version:
     runs-on: ubuntu-latest
+    outputs:
+      exists: ${{ steps.check.outputs.exists }}
+      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
-      # 1 ─ Check whether the declared version already exists
       - name: Check package version on all indexes
+        id: check
         uses: MathieuMoalic/action-python-package-new-version@v3
-        # OPTIONAL
         with:
-          # If your pyproject.toml is not at the repo root:
-          path: src/my_project/pyproject.toml
-          # Space-separated list of indexes to query
-          indexes: pypi.org test.pypi.org index.private.org
+          path: src/my_project/pyproject.toml # OPTIONAL: default = pyproject.toml
+          indexes: pypi.org test.pypi.org index.private.org # OPTIONAL: default = pypi.org
 
-      # 2 ─ Only build & publish when the version is missing on PyPI
+  build-and-publish:
+    needs: check-version
+    runs-on: ubuntu-latest
+    if: ${{ needs.check-version.outputs.exists == 'false' && !contains(needs.check-version.outputs.version, 'dev') }}
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Setup uv
-        if: env.CURRENT_VERSION_EXISTS_ON_pypi_org == 'false'
         uses: astral-sh/setup-uv@v6
 
       - name: Build distributions
-        if: env.CURRENT_VERSION_EXISTS_ON_pypi_org == 'false'
         run: uv build
 
       - name: Upload to PyPI
-        if: env.CURRENT_VERSION_EXISTS_ON_pypi_org == 'false'
         uses: pypa/gh-action-pypi-publish@release/v1
-
 ```
 
 ---
@@ -74,6 +76,7 @@ After the step runs you’ll find vars like
 ```
 CURRENT_VERSION_EXISTS_ON_pypi_org=true
 CURRENT_VERSION_EXISTS_ON_test_pypi_org=false
+PACKAGE_VERSION=1.2.3
 
 ````
 

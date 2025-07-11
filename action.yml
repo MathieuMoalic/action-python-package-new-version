@@ -1,31 +1,41 @@
 name: Python Package Version Check
-description: >
-  Parses pyproject.toml, queries package indexes and exports one
-  environment variable per index
+description: |
+  Parses pyproject.toml, queries one or many indexes, and returns
+  a JSON map telling whether the current version exists.
 
 inputs:
   path:
-    description: Path to the pyproject.toml to inspect.
-    required: false
     default: pyproject.toml
-
   indexes:
-    description: |
-      Space-separated list of index host names
-      (e.g. "pypi.org test.pypi.org internal.repo.local").
-    required: false
     default: "pypi.org"
+
+outputs:
+  version:
+    description: Parsed version as a string
+  exists_map_json:
+    description: |
+      JSON object mapping each index hostname to a boolean,
+      e.g. {"pypi.org":true,"test.pypi.org":false}
 
 runs:
   using: composite
   steps:
-    - name: Check package version
+    - name: Run entrypoint
+      id: run
       shell: bash
       run: |
         python "${{ github.action_path }}/entrypoint.py" \
-               "${{ inputs.path }}" \
-               ${{ inputs.indexes }}
+               "${{ inputs.path }}" ${{ inputs.indexes }}
 
-branding:
-  icon: package
-  color: yellow
+    - name: Emit outputs
+      shell: bash
+      run: |
+        # entrypoint.py prints two files:
+        #   .version     → plain text
+        #   .exists.json → {"pypi.org":true,"test.pypi.org":false}
+        ver="$(cat .version)"
+        map="$(cat .exists.json)"
+        {
+          echo "version=$ver"
+          echo "exists_map_json=$map"
+        } >> "$GITHUB_OUTPUT"
