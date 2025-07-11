@@ -1,6 +1,7 @@
 name: Python Package Version Check
 description: >
-    Parses pyproject.toml, checks package indexes, and sets env vars to signal if a local version needs publishing.
+  Parses pyproject.toml, queries package indexes and exports one
+  environment variable per index
 
 inputs:
   path:
@@ -10,7 +11,8 @@ inputs:
 
   indexes:
     description: |
-      (Optional) Space-separated list of index host names.
+      Space-separated list of index host names
+      (e.g. "pypi.org test.pypi.org internal.repo.local").
     required: false
     default: "pypi.org"
 
@@ -18,7 +20,6 @@ runs:
   using: composite
   steps:
     - name: Check package version
-      id: run-check
       shell: bash
       run: |
         python "${{ github.action_path }}/entrypoint.py" \

@@ -13,8 +13,6 @@ Quickly find out whether the version declared in your `pyproject.toml` is **alre
 
    * **environment variables** (for debugging inside the step)
 
-If the version is missing from *all* available indexes, `publishing` is set to `true`.
-
 ---
 
 ## 🛠 Usage
@@ -24,7 +22,8 @@ name: Build & Publish
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
+    tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]   # optional: publish only on tags
 
 jobs:
   build:
@@ -32,28 +31,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check whether this version is already published
-        uses: MathieuMoalic/action-python-package-new-version@v2.0.1
+      # 1 ─ Check whether the declared version already exists
+      - name: Check package version on all indexes
+        uses: MathieuMoalic/action-python-package-new-version@v3
+        # OPTIONAL
         with:
-          # Optional – location of pyproject.toml if not at repo root
+          # If your pyproject.toml is not at the repo root:
           path: src/my_project/pyproject.toml
-          
-          # Optional – space-separated list of index host names
-          # Example below checks PyPI, TestPyPI, and a private index
+          # Space-separated list of indexes to query
           indexes: pypi.org test.pypi.org index.private.org
 
-      # This is how you can access it through env, for individual indexes
-      - name: Install uv
-        if: env.PUBLISHING_pypi_org == 'true'
+      # 2 ─ Only build & publish when the version is missing on PyPI
+      - name: Setup uv
+        if: env.CURRENT_VERSION_EXISTS_ON_pypi_org == 'false'
         uses: astral-sh/setup-uv@v6
 
-      - name: Build package
-        if: env.PUBLISHING_pypi_org == 'true'
+      - name: Build distributions
+        if: env.CURRENT_VERSION_EXISTS_ON_pypi_org == 'false'
         run: uv build
 
-      - name: Publish package distributions to PyPI
-        if: env.PUBLISHING_pypi_org == 'true'
+      - name: Upload to PyPI
+        if: env.CURRENT_VERSION_EXISTS_ON_pypi_org == 'false'
         uses: pypa/gh-action-pypi-publish@release/v1
+
 ```
 
 ---
@@ -69,10 +69,31 @@ jobs:
 
 ### Per-index environment variables
 
-Within the same composite step you also have:
+After the step runs you’ll find vars like
 
-* `PUBLISHING_<index>` – e.g. `PUBLISHING_pypi_org=true`
-  (`index` dots replaced by underscores)
+```
+CURRENT_VERSION_EXISTS_ON_pypi_org=true
+CURRENT_VERSION_EXISTS_ON_test_pypi_org=false
+
+````
+
+Use them downstream, e.g.:
+
+```yaml
+- name: Publish to PyPI
+  if: env.CURRENT_VERSION_EXISTS_ON_pypi_org == 'false'
+  uses: pypa/gh-action-pypi-publish@release/v1
+```
+
+Possible values:
+
+| Value                   | Meaning                                                   |
+| ----------------------- | --------------------------------------------------------- |
+| `true`                  | the declared version is **already present** on that index |
+| `false`                 | the version is **missing** – you may want to upload it    |
+| `unknown-network-error` | the registry couldn’t be contacted                        |
+
+
 
 ---
 
@@ -87,13 +108,3 @@ Within the same composite step you also have:
 
   * Runs the Python script.
   * Collects variables into official Action outputs.
-
----
-
-## ❓ FAQ
-
-**Q: I use TestPyPI – how do I ignore its result?**
-A: Pass only the indexes you care about in `indexes:`. If you list both PyPI and TestPyPI, `publishing` turns `false` as soon as the version exists on either index.
-
-**Q: My workflow failed because an index was down.**
-A: Temporary network errors set `PUBLISHING_<index>` to `true` but do **not** influence the global `publishing` flag. The script treats the index as “unavailable” rather than “needs publishing”, so your upload step won’t run solely due to downtime.

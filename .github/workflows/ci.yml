@@ -1,0 +1,106 @@
+name: CI & Release
+
+on:
+  # Test every change and release on version tags
+  push:
+    branches: [ main ]
+    tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]   # e.g. v2.0.0
+  pull_request:
+
+env:
+  PYTHONWARNINGS: "ignore"        # keep logs clean
+
+jobs:
+# ────────────────────────────────────────────────────────────────────────
+  tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 1 ─ already published on PyPI
+          - case: already_published_pypi
+            path: tests/fixtures/already_published/pypi.org/pyproject.toml
+            indexes: "pypi.org"
+            expected_CURRENT_VERSION_EXISTS_ON_pypi_org: "true"
+
+          # 2 ─ brand-new version on PyPI
+          - case: needs_publishing_pypi
+            path: tests/fixtures/needs_publishing/pypi.org/pyproject.toml
+            indexes: "pypi.org"
+            expected_CURRENT_VERSION_EXISTS_ON_pypi_org: "false"
+
+          # 3 ─ on Test PyPI but NOT on PyPI
+          - case: partial_multi_index
+            path: tests/fixtures/already_published/test.pypi.org/pyproject.toml
+            indexes: "pypi.org test.pypi.org"
+            expected_CURRENT_VERSION_EXISTS_ON_pypi_org:      "false"
+            expected_CURRENT_VERSION_EXISTS_ON_test_pypi_org: "true"
+
+          # 4 ─ brand-new on both indexes
+          - case: needs_publishing_multi_index
+            path: tests/fixtures/needs_publishing/test.pypi.org/pyproject.toml
+            indexes: "pypi.org test.pypi.org"
+            expected_CURRENT_VERSION_EXISTS_ON_pypi_org:      "false"
+            expected_CURRENT_VERSION_EXISTS_ON_test_pypi_org: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run version-check (${{ matrix.case }})
+        uses: ./
+        with:
+          path:    ${{ matrix.path }}
+          indexes: ${{ matrix.indexes }}
+
+      - name: Assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "🔎  Env after action:"
+          env | grep '^CURRENT_VERSION_EXISTS_ON_' || true
+          echo
+
+          check_var () {
+            local name=$1 exp=$2
+            [[ -z "$exp" ]] && return
+            local got=${!name:-"<unset>"}
+            echo "🔎  Expect $name=$exp (got $got)"
+            if [[ "$got" != "$exp" ]]; then
+              echo "::error::❌  $name mismatch"; exit 1
+            fi
+          }
+
+          check_var "CURRENT_VERSION_EXISTS_ON_pypi_org"      "${{ matrix.expected_CURRENT_VERSION_EXISTS_ON_pypi_org:-}}"
+          check_var "CURRENT_VERSION_EXISTS_ON_test_pypi_org" "${{ matrix.expected_CURRENT_VERSION_EXISTS_ON_test_pypi_org:-}}"
+
+          echo "✅  Assertions passed for ${{ matrix.case }}"
+
+# ────────────────────────────────────────────────────────────────────────
+  release:
+    name: Draft GitHub Release
+    needs: tests                        # run only if tests succeeded
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Draft release notes
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          generate_release_notes: true
+
+      - name: Move major tag (vX → this commit)
+        env:
+          TAG: ${{ github.ref_name }}   # e.g. v2.0.0
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          major=${TAG%%.*}              # → v2
+          git tag -f "$major" "$TAG"
+          git push -f origin "$major"

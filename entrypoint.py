@@ -1,28 +1,42 @@
 #!/usr/bin/env python3
 """Check whether the version in pyproject.toml is already on each package index.
 
-Usage examples
-    python check_package_version.py                  # default: pyproject.toml  pypi.org
-    python check_package_version.py src/pyproject.toml pypi.org custom.repo.local
+Writes one env-var per index:
+
+    CURRENT_VERSION_EXISTS_ON_pypi_org=true|false|unknown-network-error
 """
 
 from __future__ import annotations
-import argparse, json, os, sys, textwrap, urllib.error, urllib.request
+import argparse
+import json
+import os
+import sys
+import textwrap
+import urllib.error
+import urllib.request
 
 try:
     import tomllib            # Python ≥3.11
-except ModuleNotFoundError:    # GitHub still ships 3.12, but keep a fallback
-    import tomli as tomllib # type: ignore
+except ModuleNotFoundError:
+    import tomli as tomllib   # type: ignore
+
+# Robust PEP-440 comparison (handles rc, a1, post, dev, etc.)
+try:
+    from packaging.version import parse as vparse # type: ignore
+except ModuleNotFoundError:        # extremely rare on GitHub runners
+    from distutils.version import LooseVersion as vparse  # type: ignore
 
 GITHUB_ENV = os.getenv("GITHUB_ENV")                 # path injected by Actions runtime
 
+
+# ────────────────────────────────────────────────────────────────────────────────
 def parse_args() -> tuple[str, list[str]]:
     p = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent(__doc__)
     )
     p.add_argument("pyproject", nargs="?", default="pyproject.toml")
-    p.add_argument("indexes",   nargs="*", help="Host names, e.g. pypi.org test.pypi.org")
+    p.add_argument("indexes", nargs="*", help="Host names, e.g. pypi.org test.pypi.org")
     ns = p.parse_args()
     return ns.pyproject, ns.indexes
 
@@ -40,14 +54,15 @@ def read_name_version(pyproject_path: str) -> tuple[str, str]:
         sys.exit(f"Error: {pyproject_path} is missing `[project]` section")
 
     proj = data["project"]
-    missing_keys = [key for key in ("name", "version") if key not in proj]
-    if missing_keys:
-        keys_str = ", ".join(f"`[project].{k}`" for k in missing_keys)
-        sys.exit(f"Error: {pyproject_path} is missing {keys_str}")
+    for key in ("name", "version"):
+        if key not in proj:
+            sys.exit(f"Error: {pyproject_path} is missing `[project].{key}`")
 
     return proj["name"], proj["version"]
 
+
 def query_index(index: str, package: str) -> list[str] | None:
+    """Return list of versions or None on network / JSON errors."""
     url = f"https://{index}/pypi/{package}/json"
     try:
         with urllib.request.urlopen(url, timeout=10) as resp:
@@ -56,20 +71,24 @@ def query_index(index: str, package: str) -> list[str] | None:
     except urllib.error.HTTPError as e:
         if e.code == 404:          # package never uploaded
             return []
-        print(f"⚠  {index}: HTTP {e.code} – treating as unavailable", file=sys.stderr)
+        print(f"⚠  {index}: HTTP {e.code} – treated as unavailable", file=sys.stderr)
         return None
-    except Exception as e:         # network errors, invalid JSON, …
-        print(f"⚠  {index}: {e} – treating as unavailable", file=sys.stderr)
+    except Exception as e:
+        print(f"⚠  {index}: {e} – treated as unavailable", file=sys.stderr)
         return None
 
-def write_env_line(key: str, value: str|bool):
+
+def write_env_line(key: str, value: str):
+    """Emit KEY=value to stdout and $GITHUB_ENV (if allowed)."""
     line = f"{key}={value}"
     print(line)
     if GITHUB_ENV:
         with open(GITHUB_ENV, "a", encoding="utf-8") as f:
             f.write(line + "\n")
 
-def main():
+
+# ────────────────────────────────────────────────────────────────────────────────
+def main() -> None:
     pyproject_path, indexes = parse_args()
     if not os.path.exists(pyproject_path):
         sys.exit(f"Error: {pyproject_path} does not exist.")
@@ -81,21 +100,28 @@ def main():
     print(f"Indexes to check: {' '.join(indexes)}")
 
     for idx in indexes:
-        key = idx.replace(".", "_")          # env-safe
-        index_versions = query_index(idx, name)
+        key         = idx.replace(".", "_")                # env-safe
+        env_var     = f"CURRENT_VERSION_EXISTS_ON_{key}"   # final var name
+        versions    = query_index(idx, name)
 
-        if index_versions is None:
-            # Treat as "needs publishing" but don't change global flag
-            write_env_line(f"PUBLISHING_{key}", "true")
+        if versions is None:
+            write_env_line(env_var, "unknown-network-error")
             continue
 
-        if len(index_versions) > 10:
-            latest = max(index_versions, key=lambda v: [int(x) if x.isdigit() else x for x in v.split('.')])
-            print(f"{idx}: {len(index_versions)} versions (latest {latest})")
-        else:
-            print(f"Versions on {idx}: {', '.join(index_versions) if index_versions else '<none>'}")
+        if not versions:
+            print(f"Versions on {idx}: <none>")
+            write_env_line(env_var, "false")
+            continue
 
-        write_env_line(f"PUBLISHING_{key}", str(local_version not in index_versions).lower())
+        if len(versions) > 10:
+            latest = max(versions, key=vparse)
+            print(f"{idx}: {len(versions)} versions (latest {latest})")
+        else:
+            print(f"Versions on {idx}: {', '.join(versions)}")
+
+        exists = str(local_version in versions).lower()   # "true" / "false"
+        write_env_line(env_var, exists)
+
 
 if __name__ == "__main__":
     main()
