@@ -1,14 +1,8 @@
 name: CI & Release
 
 on:
-  # Test every change and release on version tags
   push:
-    branches: [ main ]
-    tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]   # e.g. v2.0.0
   pull_request:
-
-env:
-  PYTHONWARNINGS: "ignore"        # keep logs clean
 
 jobs:
   tests:
@@ -21,26 +15,23 @@ jobs:
         include:
           - case: already_published_pypi
             path: tests/fixtures/already_published/pypi.org/pyproject.toml
-            indexes: "pypi.org"
+            index: "pypi.org"
             expected_pypi_org: "true"
 
           - case: needs_publishing_pypi
             path: tests/fixtures/needs_publishing/pypi.org/pyproject.toml
-            indexes: "pypi.org"
+            index: "pypi.org"
             expected_pypi_org: "false"
 
-          - case: partial_multi_index
+          - case: already_published_pypi_test
             path: tests/fixtures/already_published/test.pypi.org/pyproject.toml
-            indexes: "pypi.org test.pypi.org"
-            expected_pypi_org: "false"
+            index: "test.pypi.org"
             expected_test_pypi_org: "true"
 
-          - case: needs_publishing_multi_index
+          - case: needs_publishing_pypi_test
             path: tests/fixtures/needs_publishing/test.pypi.org/pyproject.toml
-            indexes: "pypi.org test.pypi.org"
-            expected_pypi_org: "false"
+            index: "test.pypi.org"
             expected_test_pypi_org: "false"
-
     steps:
       - uses: actions/checkout@v4
 
@@ -49,35 +40,41 @@ jobs:
         uses: ./
         with:
           path:    ${{ matrix.path }}
-          indexes: ${{ matrix.indexes }}
+          index: ${{ matrix.index }}
 
       - name: Assertions
         shell: bash
         run: |
           set -euo pipefail
           echo "🔎 Outputs:"
-          echo "Version: ${{ steps.check.outputs.version }}"
-          echo "JSON: ${{ steps.check.outputs.exists_map_json }}"
+          echo "Name:    ${{ steps.check.outputs.package_name }}"
+          echo "Version: ${{ steps.check.outputs.package_version }}"
+          echo "Exists:  ${{ steps.check.outputs.current_version_exists }}"
 
-          # Save JSON to a file
-          echo '${{ steps.check.outputs.exists_map_json }}' > exists.json
+          # Pick expected value for this matrix case
+          expected="${{ matrix.expected_pypi_org || matrix.expected_test_pypi_org }}"
 
-          check_json () {
-            local index=$1 expected=$2
-            [[ -z "$expected" ]] && return
-            # Use jq to extract value
-            local got=$(jq -r --arg idx "$index" '.[$idx]' exists.json)
-            echo "🔎 Expect $index = $expected (got $got)"
-            if [[ "$got" != "$expected" ]]; then
-              echo "::error::❌ $index mismatch"; exit 1
-            fi
-          }
-
-          check_json "pypi.org"      "${{ matrix.expected_pypi_org || '' }}"
-          check_json "test.pypi.org" "${{ matrix.expected_test_pypi_org || '' }}"
-
-          if [[ -z "${{ steps.check.outputs.version }}" ]]; then
-            echo "::error::❌ Version output is not set"; exit 1
+          if [[ -z "$expected" ]]; then
+            echo "::error::❌ Expected value not set in matrix."; exit 1
           fi
+
+          if [[ "${{ steps.check.outputs.current_version_exists }}" != "$expected" ]]; then
+            echo "::error::❌ current_version_exists output mismatch"
+            echo "Expected: $expected"
+            echo "Got:      ${{ steps.check.outputs.current_version_exists }}"
+            exit 1
+          fi
+
+          if [[ -z "${{ steps.check.outputs.package_version }}" ]]; then
+            echo "::error::❌ package_version output is empty"
+            exit 1
+          fi
+
+          if [[ -z "${{ steps.check.outputs.package_name }}" ]]; then
+            echo "::error::❌ package_name output is empty"
+            exit 1
+          fi
+
           echo "✅ Assertions passed for ${{ matrix.case }}"
+
 

@@ -1,41 +1,40 @@
 name: Python Package Version Check
-description: |
-  Parses pyproject.toml, queries one or many indexes, and returns
-  a JSON map telling whether the current version exists.
+description: >
+    Parses pyproject.toml, checks package index, and sets outputs to signal if a local version needs publishing.
 
 inputs:
   path:
+    description: Path to the pyproject.toml to inspect.
+    required: false
     default: pyproject.toml
-  indexes:
-    default: "pypi.org"
 
-outputs:
-  version:
-    description: Parsed version as a string
-  exists_map_json:
-    description: |
-      JSON object mapping each index hostname to a boolean,
-      e.g. {"pypi.org":true,"test.pypi.org":false}
+  index:
+    description: Host name of the package index to check.
+    required: false
+    default: "pypi.org"
 
 runs:
   using: composite
   steps:
-    - name: Run entrypoint
-      id: run
+    - name: Check package version
+      id: export
       shell: bash
       run: |
-        python "${{ github.action_path }}/entrypoint.py" \
-               "${{ inputs.path }}" ${{ inputs.indexes }}
+        "${{ github.action_path }}/entrypoint.py" \
+        "${{ inputs.path }}" \
+        "${{ inputs.index }}"
 
-    - name: Emit outputs
-      shell: bash
-      run: |
-        # entrypoint.py prints two files:
-        #   .version     → plain text
-        #   .exists.json → {"pypi.org":true,"test.pypi.org":false}
-        ver="$(cat .version)"
-        map="$(cat .exists.json)"
-        {
-          echo "version=$ver"
-          echo "exists_map_json=$map"
-        } >> "$GITHUB_OUTPUT"
+outputs:
+  current_version_exists:
+    description: true if the version exists in the index.
+    value: ${{ steps.export.outputs.current_version_exists }}
+  package_version:
+    description: Version string extracted from pyproject.toml.
+    value: ${{ steps.export.outputs.package_version }}
+  package_name:
+    description: Name of the package extracted from pyproject.toml.
+    value: ${{ steps.export.outputs.package_name }}
+
+branding:
+  icon: package
+  color: yellow

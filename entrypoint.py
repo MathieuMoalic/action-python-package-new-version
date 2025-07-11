@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""
-Check whether the version in pyproject.toml is already on each package index.
 
-• Writes helper files for the composite wrapper:
-      .version       → plain text       (local version string)
-      .exists.json   → {"index": true/false/null, ...}
-"""
-
-from __future__ import annotations
 import argparse
 import json
 import os
@@ -15,29 +7,18 @@ import sys
 import textwrap
 import urllib.error
 import urllib.request
-from pathlib import Path
-
-try:
-    import tomllib            # Python ≥3.11
-except ModuleNotFoundError:
-    import tomli as tomllib   # type: ignore
-
-try:
-    from packaging.version import parse as vparse   # type: ignore
-except ModuleNotFoundError:   # extremely rare on GitHub runners
-    from distutils.version import LooseVersion as vparse  # type: ignore
+import tomllib 
 
 
-# ────────────────────────────────────────────────────────────────────────────────
 def parse_args() -> tuple[str, list[str]]:
     p = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent(__doc__)
     )
-    p.add_argument("pyproject", nargs="?", default="pyproject.toml")
-    p.add_argument("indexes", nargs="*", help="Host names, e.g. pypi.org test.pypi.org")
+    p.add_argument("pyproject", help="Path to pyproject.toml")
+    p.add_argument("index", help="Host name of the package index (e.g., pypi.org)")
     ns = p.parse_args()
-    return ns.pyproject, ns.indexes
+    return ns.pyproject, ns.index
 
 
 def read_name_version(pyproject_path: str) -> tuple[str, str]:
@@ -68,56 +49,49 @@ def query_index(index: str, package: str) -> list[str] | None:
             payload = json.load(resp)
         return list(payload["releases"].keys())
     except urllib.error.HTTPError as e:
-        if e.code == 404:                    # package never uploaded
+        if e.code == 404:
             return []
-        print(f"⚠  {index}: HTTP {e.code} – treated as unavailable", file=sys.stderr)
+        print(f"⚠  {index}: HTTP {e.code} - treated as unavailable", file=sys.stderr)
         return None
     except Exception as e:
-        print(f"⚠  {index}: {e} – treated as unavailable", file=sys.stderr)
+        print(f"⚠  {index}: {e} - treated as unavailable", file=sys.stderr)
         return None
 
 
-# ────────────────────────────────────────────────────────────────────────────────
+def set_github_output(name: str, value: str) -> None:
+    """Write output to GitHub Actions output file."""
+    output_path = os.environ.get("GITHUB_OUTPUT")
+    if not output_path:
+        print("⚠ GITHUB_OUTPUT not set; skipping output export.", file=sys.stderr)
+        return
+
+    with open(output_path, "a", encoding="utf-8") as f:
+        f.write(f"{name}={value}\n")
+
+
 def main() -> None:
-    pyproject_path, indexes = parse_args()
+    pyproject_path, index = parse_args()
     if not os.path.exists(pyproject_path):
         sys.exit(f"Error: {pyproject_path} does not exist.")
-    if not indexes:
-        sys.exit("Error: at least one index must be specified.")
+    if not index:
+        sys.exit("Error: index must be specified.")
 
     name, local_version = read_name_version(pyproject_path)
     print(f"Package: {name}   Version: {local_version}")
-    print(f"Indexes to check: {' '.join(indexes)}")
+    print(f"Index to check: {index}")
 
-    exists_map: dict[str, bool | None] = {}
 
-    for idx in indexes:
-        versions = query_index(idx, name)
-        if versions is None:
-            exists_map[idx] = None
-            continue
+    versions = query_index(index, name)
+    if versions is None:
+        sys.exit(f"Error: Failed to query index {index} for package {name}.")
+    if versions:
+        print(f"Found versions: {', '.join(versions)}")
+    else:
+        print(f"No versions found for package {name} on index {index}.")
 
-        if not versions:
-            print(f"Versions on {idx}: <none>")
-            exists_map[idx] = False
-            continue
-
-        if len(versions) > 10:
-            latest = max(versions, key=vparse)
-            print(f"{idx}: {len(versions)} versions (latest {latest})")
-        else:
-            print(f"Versions on {idx}: {', '.join(versions)}")
-
-        present = local_version in versions
-        exists_map[idx] = present
-
-    # ── helper files for composite wrapper ──────────────────────────────
-    Path(".version").write_text(local_version, encoding="utf-8")
-    Path(".exists.json").write_text(
-        json.dumps(exists_map, separators=(",", ":")),
-        encoding="utf-8",
-    )
-
+    set_github_output("package_name", name)
+    set_github_output("package_version", local_version)
+    set_github_output("current_version_exists", local_version in versions)
 
 if __name__ == "__main__":
     main()
