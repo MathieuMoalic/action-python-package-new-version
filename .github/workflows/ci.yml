@@ -1,17 +1,4 @@
-name: CI & Release
-
-on:
-  # Test every change and release on version tags
-  push:
-    branches: [ main ]
-    tags:     [ 'v[0-9]+.[0-9]+.[0-9]+' ]   # e.g. v2.0.0
-  pull_request:
-
-env:
-  PYTHONWARNINGS: "ignore"        # keep logs clean
-
 jobs:
-# ────────────────────────────────────────────────────────────────────────
   tests:
     name: Integration tests
     runs-on: ubuntu-latest
@@ -20,36 +7,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # 1 ─ already published on PyPI
           - case: already_published_pypi
             path: tests/fixtures/already_published/pypi.org/pyproject.toml
             indexes: "pypi.org"
-            expected_CURRENT_VERSION_EXISTS_ON_pypi_org: "true"
+            expected_pypi_org: "true"
 
-          # 2 ─ brand-new version on PyPI
           - case: needs_publishing_pypi
             path: tests/fixtures/needs_publishing/pypi.org/pyproject.toml
             indexes: "pypi.org"
-            expected_CURRENT_VERSION_EXISTS_ON_pypi_org: "false"
+            expected_pypi_org: "false"
 
-          # 3 ─ on Test PyPI but NOT on PyPI
           - case: partial_multi_index
             path: tests/fixtures/already_published/test.pypi.org/pyproject.toml
             indexes: "pypi.org test.pypi.org"
-            expected_CURRENT_VERSION_EXISTS_ON_pypi_org:      "false"
-            expected_CURRENT_VERSION_EXISTS_ON_test_pypi_org: "true"
+            expected_pypi_org: "false"
+            expected_test_pypi_org: "true"
 
-          # 4 ─ brand-new on both indexes
           - case: needs_publishing_multi_index
             path: tests/fixtures/needs_publishing/test.pypi.org/pyproject.toml
             indexes: "pypi.org test.pypi.org"
-            expected_CURRENT_VERSION_EXISTS_ON_pypi_org:      "false"
-            expected_CURRENT_VERSION_EXISTS_ON_test_pypi_org: "false"
+            expected_pypi_org: "false"
+            expected_test_pypi_org: "false"
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Run version-check (${{ matrix.case }})
+        id: check
         uses: ./
         with:
           path:    ${{ matrix.path }}
@@ -59,53 +43,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "🔎  Env after action:"
-          env | grep '^CURRENT_VERSION_EXISTS_ON_' || true
-          echo
+          echo "🔎 Outputs:"
+          echo "Version: ${{ steps.check.outputs.version }}"
+          echo "JSON: ${{ steps.check.outputs.exists_map_json }}"
 
-          check_var () {
-            local name=$1 exp=$2
-            [[ -z "$exp" ]] && return
-            local got=${!name:-"<unset>"}
-            echo "🔎  Expect $name=$exp (got $got)"
-            if [[ "$got" != "$exp" ]]; then
-              echo "::error::❌  $name mismatch"; exit 1
+          # Save JSON to a file
+          echo '${{ steps.check.outputs.exists_map_json }}' > exists.json
+
+          check_json () {
+            local index=$1 expected=$2
+            [[ -z "$expected" ]] && return
+            # Use jq to extract value
+            local got=$(jq -r --arg idx "$index" '.[$idx]' exists.json)
+            echo "🔎 Expect $index = $expected (got $got)"
+            if [[ "$got" != "$expected" ]]; then
+              echo "::error::❌ $index mismatch"; exit 1
             fi
           }
 
-          check_var "CURRENT_VERSION_EXISTS_ON_pypi_org"      "${{ matrix.expected_CURRENT_VERSION_EXISTS_ON_pypi_org || '' }}"
-          check_var "CURRENT_VERSION_EXISTS_ON_test_pypi_org" "${{ matrix.expected_CURRENT_VERSION_EXISTS_ON_test_pypi_org || '' }}"
+          check_json "pypi.org"      "${{ matrix.expected_pypi_org || '' }}"
+          check_json "test.pypi.org" "${{ matrix.expected_test_pypi_org || '' }}"
 
-          if [[ -z "${PACKAGE_VERSION}" ]]; then
-            echo "::error::❌  PACKAGE_VERSION is not set"; exit 1
+          if [[ -z "${{ steps.check.outputs.version }}" ]]; then
+            echo "::error::❌ Version output is not set"; exit 1
           fi
-          echo "🔎  PACKAGE_VERSION is set: $PACKAGE_VERSION"
+          echo "✅ Assertions passed for ${{ matrix.case }}"
 
-          echo "✅  Assertions passed for ${{ matrix.case }}"
-
-# ────────────────────────────────────────────────────────────────────────
-  release:
-    name: Draft GitHub Release
-    needs: tests                        # run only if tests succeeded
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Draft release notes
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: false
-          generate_release_notes: true
-
-      - name: Move major tag (vX → this commit)
-        env:
-          TAG: ${{ github.ref_name }}   # e.g. v2.0.0
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          major=${TAG%%.*}              # → v2
-          git tag -f "$major" "$TAG"
-          git push -f origin "$major"
