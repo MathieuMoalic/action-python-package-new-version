@@ -71,6 +71,7 @@ def set_github_output(name: str, value: str) -> None:
 
     with open(output_path, "a", encoding="utf-8") as f:
         f.write(f"{name}={value}\n")
+    print(f"{name}:{value}")
 
 
 def main() -> None:
@@ -93,6 +94,7 @@ def main() -> None:
     else:
         print(f"No versions found for package {name} on index {index}.")
 
+    print("outputs:")
     set_github_output("package_name", name)
     set_github_output("package_version", local_version)
     set_github_output("current_version_exists", str(local_version in versions).lower())
