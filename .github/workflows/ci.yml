@@ -73,8 +73,8 @@ jobs:
             fi
           }
 
-          check_var "CURRENT_VERSION_EXISTS_ON_pypi_org"      "${{ matrix.expected_CURRENT_VERSION_EXISTS_ON_pypi_org:-}}"
-          check_var "CURRENT_VERSION_EXISTS_ON_test_pypi_org" "${{ matrix.expected_CURRENT_VERSION_EXISTS_ON_test_pypi_org:-}}"
+          check_var "CURRENT_VERSION_EXISTS_ON_pypi_org"      "${{ matrix.expected_CURRENT_VERSION_EXISTS_ON_pypi_org || '' }}"
+          check_var "CURRENT_VERSION_EXISTS_ON_test_pypi_org" "${{ matrix.expected_CURRENT_VERSION_EXISTS_ON_test_pypi_org || '' }}"
 
           echo "✅  Assertions passed for ${{ matrix.case }}"
 
